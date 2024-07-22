@@ -94,7 +94,7 @@ async def control_robot(robot_info, esc_event):
     # 로봇을 초기화 및 제어 루프를 실행
     try:
         ep_robot = await initialize_robot(robot_info["sn"])
-        comm = initialize_communication("192.168.50.218", 11014)
+        comm = initialize_communication("192.168.50.75", 11014)
         controller = RobotController(ep_robot, robot_info["name"], comm)
         setup_callbacks(ep_robot, controller)
         await asyncio.sleep(0.5)
