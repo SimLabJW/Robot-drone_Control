@@ -1,10 +1,7 @@
 import socket
 import json
-import base64
-from datetime import datetime
 from threading import Thread
-from RobotController import *
-
+from RobotController import RobotController
 
 class Server:
     def __init__(self):
@@ -12,38 +9,51 @@ class Server:
         self.unity_socket()
 
     def unity_socket(self):
-        # for unity
+        # Unity와의 연결 설정
         self.socket_unity = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket_unity.bind(("0.0.0.0", 11013)) # Unity Port 11013
         self.socket_unity.listen(5)
-        self.conn_u, self.addr_u = self.socket_unity.accept()
-        print(f"Connected to {self.addr_u}")
         print("Waiting for unity connections...")
+        
+        
 
-    # def device_socket(self):
-    #     # for unity
-    #     self.socket_device = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    #     self.socket_device.bind(("0.0.0.0", 11014)) # Unity Port 11013
-    #     self.socket_device.listen(5)
-    #     self.conn_d, self.addr_d = self.socket_device.accept()
-    #     print(f"Connected to {self.addr_d}")
-    #     print("Waiting for device connections...")
+    def handle_unity_connection(self):
+        # Unity 연결 처리
+        while True:
+            self.conn_u, self.addr_u = self.socket_unity.accept()
+            print(f"Connected to {self.addr_u}")
+            try:
+                recv_data = self.conn_u.recv(4096).decode("utf-8")
+                if not recv_data:
+                    continue
+                else:
+                    if recv_data == "Unity Start":
+                        print(recv_data)
+                        device_connect = self.robotcontroller.Research_Device()
+                        print(f"aa + {device_connect[0]['name']}")
+                        print(f"bb + {device_connect[1]['name']}")
 
-    def start(self): # Unity Open Recv 
+                        json_data = json.dumps(device_connect)
+                        self.conn_u.send(json_data.encode('utf-8'))
 
-        recv_data = self.conn_u.recv(4096).decode("utf-8")
+                    elif recv_data == "Remote":
+                        continue
+            except ConnectionResetError:
+                print("Connection lost. Waiting for reconnection...")
+                self.conn_u, self.addr_u = self.socket_unity.accept()
+                print(f"Reconnected to {self.addr_u}")
+            except Exception as e:
+                print(f"An error occurred: {e}")
 
-        if recv_data == "Unity Start":
-            print(recv_data)
-            a = self.robotcontroller.Research_Device()
-            print(type(a))
-            print(a)
-            self.close()
+    def start(self):
+        # 서버 시작
+        self.unity_thread = Thread(target=self.handle_unity_connection)
+        self.unity_thread.start()
 
 
     def close(self):
+        # 서버 종료
         self.socket_unity.close()
-        # self.socket_device.close()
 
 if __name__ == '__main__':
     server = Server()
@@ -56,6 +66,16 @@ if __name__ == '__main__':
 
 
 
+
+
+    # def device_socket(self):
+    #     # for unity
+    #     self.socket_device = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    #     self.socket_device.bind(("0.0.0.0", 11014)) # Unity Port 11013
+    #     self.socket_device.listen(5)
+    #     self.conn_d, self.addr_d = self.socket_device.accept()
+    #     print(f"Connected to {self.addr_d}")
+    #     print("Waiting for device connections...")
 
 
 
