@@ -6,7 +6,7 @@ class Robomaster():
     def __init__(self) -> None:
         print("robomaster init")
         self.ep_robot = robot.Robot()
-        self.ep_robot.initialize(conn_type="sta", sn="3JKCK980030EKR")
+        self.ep_robot.initialize(conn_type="sta", sn="3JKCK2S00305WL")
         self.ep_chassis = self.ep_robot.chassis
         self.ep_gimbal = self.ep_robot.gimbal
         self.ep_camera = self.ep_robot.camera
@@ -51,6 +51,6 @@ class Robomaster():
     
         return self.ep_camera
 
-        
-
+r = Robomaster()
+r.Move("W")
 

@@ -4,9 +4,11 @@ from threading import Thread
 from RobotController import RobotController
 
 class Server:
-    def __init__(self):
-        self.robotcontroller = RobotController()
-        self.unity_socket()
+    def __init__(self, address="0.0.0.0", port=11014):
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.bind((address, port))
+        self.socket.listen(5)
+        print("Waiting for client connections...")
 
     def unity_socket(self):
         # Unity와의 연결 설정
@@ -49,7 +51,6 @@ class Server:
         # 서버 시작
         self.unity_thread = Thread(target=self.handle_unity_connection)
         self.unity_thread.start()
-
 
     def close(self):
         # 서버 종료

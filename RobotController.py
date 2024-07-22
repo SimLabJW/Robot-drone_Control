@@ -25,8 +25,8 @@ class RobotController():
             selected_ips = self.select_robot_ips(self.ip_list)
             robots = [{"name": f"robot_{self.ip_to_sn[ip][-4:]}", "sn": self.ip_to_sn[ip]} for ip in selected_ips if ip in self.ip_to_sn]
             
-            a = self.Device_Connect(robots)
-            return a
+            device_connect = self.Device_Connect(robots)
+            return device_connect
         else:
             print("No robots found.")
 
