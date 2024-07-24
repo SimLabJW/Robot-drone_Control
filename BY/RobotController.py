@@ -20,7 +20,7 @@ class RobotController():
         }
         
     def Research_Device(self):
-        self.ip_list = conn.scan_robot_ip_list(timeout=5)
+        self.ip_list = conn.scan_robot_ip_list(timeout=1)
         if self.ip_list:
             selected_ips = self.select_robot_ips(self.ip_list)
             robots = [{"name": f"robot_{self.ip_to_sn[ip][-4:]}", "sn": self.ip_to_sn[ip]} for ip in selected_ips if ip in self.ip_to_sn]
