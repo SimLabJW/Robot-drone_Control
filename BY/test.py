@@ -14,10 +14,7 @@ class TCPServer:
         self.ports = ports
         self.servers = []
         self.stop_event = threading.Event()
-        self.remote_flag = False
         self.image_conn = None  # To hold the connection for image transfer
-        self.image_conn_lock = threading.Lock()
-        self.robotcamera = self.robotcontroller.Device_Camera("3JKCK980030EKR")
 
         for port in self.ports:
             server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -31,24 +28,6 @@ class TCPServer:
             conn.sendall(message)
             time.sleep(1)  # 1초마다 메시지 전송
 
-    def send_image(self, robotcamera):
-        with self.image_conn_lock:
-            if self.image_conn:
-                # 이미지를 로봇 컨트롤러로부터 가져옴
-                image_data = robotcamera.read_cv2_image(strategy="newest")
-                img = cv2.resize(image_data, (480, 300))  # 해상도를 조정
-                encoded_image = self.convert_image_to_bytes(img)
-
-                try:
-                    self.image_conn.sendall(encoded_image)
-                    # time.sleep(0.1)
-                    print("Image sent to client on port 11014")
-                except Exception as e:
-                    print(f"Failed to send image: {e}")
-                    self.image_conn = None
-            else:
-                print("No client connected on port 11014 to send the image.")
-
     def handle_client(self, conn, addr, port):
         print(f"Client connected on port {port}: {addr}")
         stop_event = threading.Event()
@@ -60,11 +39,10 @@ class TCPServer:
                 if not data:
                     break
                 data = data.decode()
+                print(f"Received from {addr} on port {port}: {data}")
 
                 if port == 11013:
-                    print(f"Received from {addr} on port {port}: {data}")
                     if data == 'Simulation':
-                        self.remote_flag = False
                         if send_thread and send_thread.is_alive():
                             stop_event.set()
                             send_thread.join()
@@ -73,12 +51,10 @@ class TCPServer:
                         if not self.message or self.message == "No robots found.":
                             self.message = b"No robots found."
                         else:
-                            self.message = json.dumps(self.message).encode()
+                            self.message = self.message.encode()
                         send_thread = threading.Thread(target=self.send_periodically, args=(conn, self.message, stop_event))
                         send_thread.start()
                     elif data == 'Remote':
-                        self.remote_flag = True
-                        
                         if send_thread and send_thread.is_alive():
                             stop_event.set()
                             send_thread.join()
@@ -86,66 +62,40 @@ class TCPServer:
                         send_thread = threading.Thread(target=self.send_periodically, args=(conn, b'bbbb', stop_event))
                         send_thread.start()
 
+                        # Send image to the client connected to port 11014
+                        if self.image_conn:
+                            robotcamera = self.robotcontroller.Device_Camera  # 이미지를 로봇 컨트롤러로부터 가져옴
+                            image_data = robotcamera.read_cv2_image(strategy="newest")
+
+                            img = cv2.resize(image_data, (480, 300))  # 해상도를 조정
+                            encoded_image = self.convert_image_to_bytes(img)
+
+                            self.image_conn.sendall(encoded_image)
+                        else:
+                            print("No client connected on port 11014 to send the image.")
+                    else:
+                        conn.sendall(b'Unknown command')
                 elif port == 11014:
-                    print(f"Received from {addr} on port {port}: {data}")
-                    with threading.Lock():
-                        self.image_conn = conn
+                    self.image_conn = conn
 
-                     # A와 S 명령을 처리하는 스레드
-                    command_thread = threading.Thread(target=self.handle_commands, args=(conn,))
-                    command_thread.start()
-
-                    while True:
-                        # Keep the connection alive
-                        try:
-                            if not self.remote_flag:
-                               self.image_conn.sendall(b'ping')
-                               time.sleep(1)
-                            else:
-                                self.send_image(self.robotcamera)
-
-                        except Exception as e:
-                            print(f"Exception keeping 11014 alive: {e}")
-                            with threading.Lock():
-                                self.image_conn = None
-                            break
         except Exception as e:
             print(f"Exception in client handler on port {port}: {e}")
         finally:
             if send_thread and send_thread.is_alive():
                 stop_event.set()
                 send_thread.join()
-            if port == 11014:
-                with threading.Lock():
-                    self.image_conn = None
             conn.close()
             print(f"Client disconnected on port {port}: {addr}")
 
     def convert_image_to_bytes(self, image_data):
-        # 이미지를 JPEG 형식으로 메모리 버퍼에 인코딩
-        success, encoded_image = cv2.imencode('.jpg', image_data)
+        # 이미지를 PNG 형식으로 메모리 버퍼에 인코딩
+        success, encoded_image = cv2.imencode('.png', image_data)
         if success:
             # 성공적으로 인코딩된 경우, 바이트 데이터를 반환
             return encoded_image.tobytes()
         else:
             # 인코딩 실패 시, None 반환
             return None
-        
-    def handle_commands(self, conn):
-        try:
-            while True:
-                data = conn.recv(1024)
-                if not data:
-                    break
-                data = data.decode()
-                if self.remote_flag and data in ['W', 'S', 'A', 'D']:
-                    self.robomaster_move(data)
-        except Exception as e:
-            print(f"Exception in command handler: {e}")
-
-    def robomaster_move(self, cmd):
-        self.robotcontroller.Move(cmd)
-        print(f"robomaster unity cmd : {cmd}")
 
     def start_server(self):
         signal.signal(signal.SIGINT, self.shutdown)
