@@ -10,6 +10,8 @@ class TCPServer:
     def __init__(self, host='0.0.0.0', ports=[11013]):
         self.robotcontroller = RobotController()
         self.message = None
+        self.sensor_message = None
+
         self.host = host
         self.ports = ports
         self.servers = []
@@ -17,7 +19,10 @@ class TCPServer:
         self.remote_flag = False
         self.image_conn = None  # To hold the connection for image transfer
         self.image_conn_lock = threading.Lock()
-        self.robotcamera = self.robotcontroller.Device_Camera("3JKCK980030EKR")
+
+        self.ep_robot = self.robotcontroller.initialize_robot("3JKCK980030EKR")
+        self.robotcamera = self.robotcontroller.Device_Camera(self.ep_robot)
+        self.robotcontroller.Device_Sensor(self.ep_robot)
 
         for port in self.ports:
             server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -26,8 +31,16 @@ class TCPServer:
             self.servers.append(server)
             print(f"Server is running on port {port}...")
 
+
     def send_periodically(self, conn, message, stop_event):
         while not stop_event.is_set():
+            if self.remote_flag:
+                self.sensor_message = self.robotcontroller.get_latest_distance()
+                message = json.dumps(self.sensor_message).encode()
+            else:
+                self.message = self.robotcontroller.Research_Device()
+                message = json.dumps(self.message).encode()
+
             conn.sendall(message)
             time.sleep(1)  # 1초마다 메시지 전송
 
@@ -41,13 +54,12 @@ class TCPServer:
 
                 try:
                     self.image_conn.sendall(encoded_image)
-                    # time.sleep(0.1)
-                    print("Image sent to client on port 11014")
+
                 except Exception as e:
                     print(f"Failed to send image: {e}")
                     self.image_conn = None
-            else:
-                print("No client connected on port 11014 to send the image.")
+            # else:
+            #     print("No client connected on port 11014 to send the image.")
 
     def handle_client(self, conn, addr, port):
         print(f"Client connected on port {port}: {addr}")
@@ -83,7 +95,13 @@ class TCPServer:
                             stop_event.set()
                             send_thread.join()
                         stop_event.clear()
-                        send_thread = threading.Thread(target=self.send_periodically, args=(conn, b'bbbb', stop_event))
+                        self.sensor_message = self.robotcontroller.get_latest_distance()
+        
+                        if not self.sensor_message :
+                            self.sensor_message = b"No robots found."
+                        else:
+                            self.sensor_message = json.dumps(self.sensor_message).encode()
+                        send_thread = threading.Thread(target=self.send_periodically, args=(conn,self.sensor_message, stop_event))
                         send_thread.start()
 
                 elif port == 11014:

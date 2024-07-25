@@ -1,19 +1,19 @@
 import base64
 import cv2
-import datetime
+from datetime import datetime
 import random
 import json
+import time
 
 from multi_robomaster import multi_robot
 from robomaster import robot, camera, conn
 import sys
 
 class RobotController():
-    def __init__(self):
-        self.ep_robot = robot.Robot()
-        
+    def __init__(self): 
         self.distance = 0  # 초기 거리 값
-
+        self.ep_robot = None
+        
         self.ip_to_sn = {
         "192.168.50.31": "3JKCK2S00305WL",  # 집게 로봇
         "192.168.50.221": "3JKCK6U0030A6U", # 5층 로봇
@@ -43,35 +43,29 @@ class RobotController():
 
      ################################################       
 
-    def Device_Camera(self, sn):
-        
-        self.ep_robot.initialize(conn_type="sta", sn=sn)
+
+    def Device_Camera(self, ep_robot):
         time.sleep(3)
-        ep_camera = self.ep_robot.camera
+        ep_camera = ep_robot.camera
         ep_camera.start_video_stream(display=False)
-
-
         return ep_camera
 
-    def Device_Sensor(self, controller):
-        # 로봇의 센서와 아머 이벤트 콜백을 설정
-        self.ep_robot.armor.set_hit_sensitivity(comp="all", sensitivity=100)
-        self.ep_robot.armor.sub_hit_event(controller.hit_callback)
-        self.ep_robot.sensor.sub_distance(freq=20, callback=controller.tof_callback)
+    def initialize_robot(self, sn):
+        self.ep_robot = robot.Robot()
+        self.ep_robot.initialize(conn_type="sta", sn=sn)
+        self.ep_chassis = self.ep_robot.chassis
+        time.sleep(3)
 
+        return self.ep_robot
+
+    def Device_Sensor(self, ep_robot):
+        ep_robot.sensor.sub_distance(freq=4, callback=self.tof_callback)
+        
+    
+    def get_latest_distance(self):
+        return [{"timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3], "distance": self.distance}]
+    
     ##################################################
-
-    async def shutdown(self):
-        # 로봇과의 연결을 종료
-        self.ep_robot_camera.camera.stop_video_stream()
-        self.ep_robot_camera.close()
-        self.comm.close()
-
-    @staticmethod
-    def time():
-        # 현재 시간을 문자열 형식으로 반환
-        return datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-
 
     def tof_callback(self, sub_info):
         # ToF 센서로부터 거리를 업데이트
@@ -79,16 +73,15 @@ class RobotController():
 
     def hit_callback(self, sub_info):
         # 로봇이 충격을 받을 때 호출
-        armor_id, hit_type = sub_info
+        # armor_id, hit_type = sub_info
         timestamp = self.time()
         
-        hit_info = [armor_id, hit_type]
+        # hit_info = [armor_id, hit_type]
         
-        # 충격시 로봇 색 변환
-        print(f"{self.robot_name} Physical hit event: armor_id={armor_id}, hit_type={hit_type}")
-        self.ep_robot.led.set_led(comp="all", r=random.randint(0, 255), g=random.randint(0, 255), b=random.randint(0, 255))  
+  
+        # self.ep_robot.led.set_led(comp="all", r=random.randint(0, 255), g=random.randint(0, 255), b=random.randint(0, 255))  
 
-        return self.robot_name, timestamp, self.distance #hit_info
+        return [{"timestamp":timestamp, "distance":self.distance}] #hit_info
 
     def json_convert(id, timestamp, image_data, distance, hit_info=None):
         # 데이터를 서버로 전송
@@ -106,11 +99,6 @@ class RobotController():
 
         return json_data.encode('utf-8')
 
-    @staticmethod
-    def time():
-        # 현재 시간을 문자열 형식으로 반환
-        return datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-    
     ###############################################################################################
     # 로봇 1개
     def control_one():
@@ -136,14 +124,24 @@ class RobotController():
         robot_group_ep_arm = multi_robots.build_group([0])       # 집게
         robot_group_ep_gimbal = multi_robots.build_group([1, 2])    # 총
         
-        
-        
-    
         return
     
+
     
-    
-    
-    
-    
-    
+    def Move(self, key):
+        
+        try:
+            # Define body movement based on key
+            body_movement = {
+                'W': (0.3, 0, 0),
+                'S': (-0.3, 0, 0),
+                'A': (0, -0.3, 0),
+                'D': (0, 0.3, 0),
+                'Q': (0, 0, 45),
+                'E': (0, 0, -45)
+            }
+            x, y, z = body_movement[key]
+            self.ep_chassis.move(x=x, y=y, z=z, xy_speed=0.7, z_speed=45).wait_for_completed()
+        except KeyError:
+            print(f"Invalid key: '{key}'. Terminating program.")
+            sys.exit(1)  # 프로그램을 에러 코드와 함께 종료
