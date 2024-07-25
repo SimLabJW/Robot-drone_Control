@@ -3,12 +3,8 @@ import cv2
 import datetime
 import random
 import json
-<<<<<<< HEAD
 
 from multi_robomaster import multi_robot
-=======
-import time
->>>>>>> a0bb3b5ec13f079224d33fdd2434cb85c6ddcc22
 from robomaster import robot, camera, conn
 import sys
 
@@ -19,15 +15,9 @@ class RobotController():
         self.distance = 0  # 초기 거리 값
 
         self.ip_to_sn = {
-<<<<<<< HEAD
         "192.168.50.31": "3JKCK2S00305WL",  # 집게 로봇
         "192.168.50.221": "3JKCK6U0030A6U", # 5층 로봇
         "192.168.50.39": "3JKCK980030EKR"   # 6층 로봇
-=======
-        "192.168.50.31": "3JKCK2S00305WL", #w집게
-        "192.168.50.221": "3JKCK6U0030A6U", #고장
-        "192.168.50.39": "3JKCK980030EKR" 
->>>>>>> a0bb3b5ec13f079224d33fdd2434cb85c6ddcc22
         }
         
     def Research_Device(self):
@@ -121,7 +111,6 @@ class RobotController():
         # 현재 시간을 문자열 형식으로 반환
         return datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
     
-<<<<<<< HEAD
     ###############################################################################################
     # 로봇 1개
     def control_one():
@@ -158,24 +147,3 @@ class RobotController():
     
     
     
-=======
-
-    def Move(self, key):
-
-        ep_chassis = self.ep_robot.chassis
-        try:
-            # Define body movement based on key
-            body_movement = {
-                'W': (0.3, 0, 0),
-                'S': (-0.3, 0, 0),
-                'A': (0, -0.3, 0),
-                'D': (0, 0.3, 0),
-                'Q': (0, 0, 45),
-                'E': (0, 0, -45)
-            }
-            x, y, z = body_movement[key]
-            ep_chassis.move(x=x, y=y, z=z, xy_speed=0.7, z_speed=45).wait_for_completed()
-        except KeyError:
-            print(f"Invalid key: '{key}'. Terminating program.")
-            sys.exit(1)  # 프로그램을 에러 코드와 함께 종료
->>>>>>> a0bb3b5ec13f079224d33fdd2434cb85c6ddcc22
