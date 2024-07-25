@@ -3,25 +3,35 @@ import cv2
 import datetime
 import random
 import json
+<<<<<<< HEAD
 
 from multi_robomaster import multi_robot
+=======
+import time
+>>>>>>> a0bb3b5ec13f079224d33fdd2434cb85c6ddcc22
 from robomaster import robot, camera, conn
+import sys
 
 class RobotController():
     def __init__(self):
         self.ep_robot = robot.Robot()
-
+        
         self.distance = 0  # 초기 거리 값
 
-        self.ep_robot = robot.Robot()
         self.ip_to_sn = {
+<<<<<<< HEAD
         "192.168.50.31": "3JKCK2S00305WL",  # 집게 로봇
         "192.168.50.221": "3JKCK6U0030A6U", # 5층 로봇
         "192.168.50.39": "3JKCK980030EKR"   # 6층 로봇
+=======
+        "192.168.50.31": "3JKCK2S00305WL", #w집게
+        "192.168.50.221": "3JKCK6U0030A6U", #고장
+        "192.168.50.39": "3JKCK980030EKR" 
+>>>>>>> a0bb3b5ec13f079224d33fdd2434cb85c6ddcc22
         }
         
     def Research_Device(self):
-        self.ip_list = conn.scan_robot_ip_list(timeout=5)
+        self.ip_list = conn.scan_robot_ip_list(timeout=1)
         if self.ip_list:
             selected_ips = self.select_robot_ips(self.ip_list)
             robots = [{"name": f"robot_{self.ip_to_sn[ip][-4:]}", "sn": self.ip_to_sn[ip]} for ip in selected_ips if ip in self.ip_to_sn]
@@ -46,8 +56,12 @@ class RobotController():
     def Device_Camera(self, sn):
         
         self.ep_robot.initialize(conn_type="sta", sn=sn)
-        self.ep_robot.camera.start_video_stream(display=False, resolution=camera.STREAM_360P)
-        return self.ep_robot
+        time.sleep(3)
+        ep_camera = self.ep_robot.camera
+        ep_camera.start_video_stream(display=False)
+
+
+        return ep_camera
 
     def Device_Sensor(self, controller):
         # 로봇의 센서와 아머 이벤트 콜백을 설정
@@ -77,16 +91,14 @@ class RobotController():
         # 로봇이 충격을 받을 때 호출
         armor_id, hit_type = sub_info
         timestamp = self.time()
-        img = self.ep_robot_camera.camera.read_cv2_image(strategy="newest")
-        image_data = base64.b64encode(cv2.imencode('.jpg', img)[1]).decode('utf-8') if img is not None else None
+        
         hit_info = [armor_id, hit_type]
         
         # 충격시 로봇 색 변환
         print(f"{self.robot_name} Physical hit event: armor_id={armor_id}, hit_type={hit_type}")
         self.ep_robot.led.set_led(comp="all", r=random.randint(0, 255), g=random.randint(0, 255), b=random.randint(0, 255))  
-        self.comm.send(self.robot_name, timestamp, image_data, self.distance, hit_info)
 
-
+        return self.robot_name, timestamp, self.distance #hit_info
 
     def json_convert(id, timestamp, image_data, distance, hit_info=None):
         # 데이터를 서버로 전송
@@ -109,6 +121,7 @@ class RobotController():
         # 현재 시간을 문자열 형식으로 반환
         return datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
     
+<<<<<<< HEAD
     ###############################################################################################
     # 로봇 1개
     def control_one():
@@ -145,3 +158,24 @@ class RobotController():
     
     
     
+=======
+
+    def Move(self, key):
+
+        ep_chassis = self.ep_robot.chassis
+        try:
+            # Define body movement based on key
+            body_movement = {
+                'W': (0.3, 0, 0),
+                'S': (-0.3, 0, 0),
+                'A': (0, -0.3, 0),
+                'D': (0, 0.3, 0),
+                'Q': (0, 0, 45),
+                'E': (0, 0, -45)
+            }
+            x, y, z = body_movement[key]
+            ep_chassis.move(x=x, y=y, z=z, xy_speed=0.7, z_speed=45).wait_for_completed()
+        except KeyError:
+            print(f"Invalid key: '{key}'. Terminating program.")
+            sys.exit(1)  # 프로그램을 에러 코드와 함께 종료
+>>>>>>> a0bb3b5ec13f079224d33fdd2434cb85c6ddcc22

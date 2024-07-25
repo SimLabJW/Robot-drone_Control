@@ -1,80 +1,185 @@
 import socket
-import json
-import base64
-from datetime import datetime
-from threading import Thread
+import threading
+import time
+import signal
+import os
+from pynput import keyboard
+from RobotController import *
 
-class Server:
-    def __init__(self, address="0.0.0.0", port=11014):
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.bind((address, port))
-        self.socket.listen(5)
-        print("Waiting for client connections...")
+class TCPServer:
+    def __init__(self, host='0.0.0.0', ports=[11013]):
+        self.robotcontroller = RobotController()
+        self.message = None
+        self.host = host
+        self.ports = ports
+        self.servers = []
+        self.stop_event = threading.Event()
+        self.remote_flag = False
+        self.image_conn = None  # To hold the connection for image transfer
+        self.image_conn_lock = threading.Lock()
+        self.robotcamera = self.robotcontroller.Device_Camera("3JKCK980030EKR")
 
-    def start(self):
-        while True:
-            conn, addr = self.socket.accept()
-            print(f"Connected to {addr}")
-            client_thread = Thread(target=self.handle_client, args=(conn, addr))
-            client_thread.start()
+        for port in self.ports:
+            server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            server.bind((self.host, port))
+            server.listen(5)
+            self.servers.append(server)
+            print(f"Server is running on port {port}...")
 
-    def handle_client(self, conn, addr):
-        buffer = ""
-        data_list = []
+    def send_periodically(self, conn, message, stop_event):
+        while not stop_event.is_set():
+            conn.sendall(message)
+            time.sleep(1)  # 1초마다 메시지 전송
+
+    def send_image(self, robotcamera):
+        with self.image_conn_lock:
+            if self.image_conn:
+                # 이미지를 로봇 컨트롤러로부터 가져옴
+                image_data = robotcamera.read_cv2_image(strategy="newest")
+                img = cv2.resize(image_data, (480, 300))  # 해상도를 조정
+                encoded_image = self.convert_image_to_bytes(img)
+
+                try:
+                    self.image_conn.sendall(encoded_image)
+                    # time.sleep(0.1)
+                    print("Image sent to client on port 11014")
+                except Exception as e:
+                    print(f"Failed to send image: {e}")
+                    self.image_conn = None
+            else:
+                print("No client connected on port 11014 to send the image.")
+
+    def handle_client(self, conn, addr, port):
+        print(f"Client connected on port {port}: {addr}")
+        stop_event = threading.Event()
+        send_thread = None
+
         try:
             while True:
-                data = conn.recv(4096).decode('utf-8')
+                data = conn.recv(1024)
                 if not data:
-                    print(f"Connection closed by {addr}")
                     break
-                buffer += data
-                while '\n' in buffer:
-                    packet, buffer = buffer.split('\n', 1)
-                    print(f"Received packet: {packet}")
-                    data_list.append(json.loads(packet))
-        except ConnectionResetError:
-            print(f"Connection reset by {addr}")
+                data = data.decode()
+
+                if port == 11013:
+                    print(f"Received from {addr} on port {port}: {data}")
+                    if data == 'Simulation':
+                        self.remote_flag = False
+                        if send_thread and send_thread.is_alive():
+                            stop_event.set()
+                            send_thread.join()
+                        stop_event.clear()
+                        self.message = self.robotcontroller.Research_Device()
+                        if not self.message or self.message == "No robots found.":
+                            self.message = b"No robots found."
+                        else:
+                            self.message = json.dumps(self.message).encode()
+                        send_thread = threading.Thread(target=self.send_periodically, args=(conn, self.message, stop_event))
+                        send_thread.start()
+                    elif data == 'Remote':
+                        self.remote_flag = True
+                        
+                        if send_thread and send_thread.is_alive():
+                            stop_event.set()
+                            send_thread.join()
+                        stop_event.clear()
+                        send_thread = threading.Thread(target=self.send_periodically, args=(conn, b'bbbb', stop_event))
+                        send_thread.start()
+
+                elif port == 11014:
+                    print(f"Received from {addr} on port {port}: {data}")
+                    with threading.Lock():
+                        self.image_conn = conn
+
+                     # A와 S 명령을 처리하는 스레드
+                    command_thread = threading.Thread(target=self.handle_commands, args=(conn,))
+                    command_thread.start()
+
+                    while True:
+                        # Keep the connection alive
+                        try:
+                            if not self.remote_flag:
+                               self.image_conn.sendall(b'ping')
+                               time.sleep(1)
+                            else:
+                                self.send_image(self.robotcamera)
+
+                        except Exception as e:
+                            print(f"Exception keeping 11014 alive: {e}")
+                            with threading.Lock():
+                                self.image_conn = None
+                            break
         except Exception as e:
-            print(f"Error handling client {addr}: {e}")
+            print(f"Exception in client handler on port {port}: {e}")
         finally:
-            if data_list:
-                self.save_data(data_list)
+            if send_thread and send_thread.is_alive():
+                stop_event.set()
+                send_thread.join()
+            if port == 11014:
+                with threading.Lock():
+                    self.image_conn = None
             conn.close()
+            print(f"Client disconnected on port {port}: {addr}")
 
-    def save_data(self, data_list):
+    def convert_image_to_bytes(self, image_data):
+        # 이미지를 JPEG 형식으로 메모리 버퍼에 인코딩
+        success, encoded_image = cv2.imencode('.jpg', image_data)
+        if success:
+            # 성공적으로 인코딩된 경우, 바이트 데이터를 반환
+            return encoded_image.tobytes()
+        else:
+            # 인코딩 실패 시, None 반환
+            return None
+        
+    def handle_commands(self, conn):
         try:
-            id = data_list[0]["id"]
-            start_timestamp = data_list[0]["time"].replace(":", "-").replace(" ", "_")
-            end_timestamp = data_list[-1]["time"].replace(":", "-").replace(" ", "_")
+            while True:
+                data = conn.recv(1024)
+                if not data:
+                    break
+                data = data.decode()
+                if self.remote_flag and data in ['W', 'S', 'A', 'D']:
+                    self.robomaster_move(data)
+        except Exception as e:
+            print(f"Exception in command handler: {e}")
 
-            # Save image data and replace it with the filename in the JSON data
-            for packet in data_list:
-                if packet["imageData"]:
-                    image_bytes = base64.b64decode(packet["imageData"])
-                    safe_timestamp = packet["time"].replace(":", "-").replace(" ", "_")
-                    image_filename = f"{id}_{safe_timestamp}.jpg"
-                    with open(image_filename, 'wb') as image_file:
-                        image_file.write(image_bytes)
-                    print(f"Image saved as {image_filename}")
-                    packet["imageData"] = image_filename
+    def robomaster_move(self, cmd):
+        self.robotcontroller.Move(cmd)
+        print(f"robomaster unity cmd : {cmd}")
 
-            # Save all other data to a single JSON file
-            json_filename = f"{id}_{start_timestamp}_to_{end_timestamp}.json"
-            with open(json_filename, 'w') as json_file:
-                json.dump(data_list, json_file, indent=4)
-            print(f"Data saved as {json_filename}")
+    def start_server(self):
+        signal.signal(signal.SIGINT, self.shutdown)
+        threads = []
+        try:
+            for i, server in enumerate(self.servers):
+                thread = threading.Thread(target=self.accept_connections, args=(server, self.ports[i]))
+                thread.start()
+                threads.append(thread)
+
+            for thread in threads:
+                thread.join()
 
         except Exception as e:
-            print(f"Error saving data: {e}")
+            print(f"Server error: {e}")
+        finally:
+            print("Server is shutting down.")
+            for server in self.servers:
+                server.close()
+            os._exit(1)
 
-    def close(self):
-        self.socket.close()
+    def accept_connections(self, server, port):
+        while True:
+            conn, addr = server.accept()
+            threading.Thread(target=self.handle_client, args=(conn, addr, port)).start()
 
-if __name__ == '__main__':
-    server = Server()
-    try:
-        server.start()
-    except KeyboardInterrupt:
-        print("Server shutting down...")
-    finally:
-        server.close()
+    def shutdown(self, signum, frame):
+        print("Shutting down server...")
+        self.stop_event.set()
+        for server in self.servers:
+            server.close()
+        os._exit(0)
+
+if __name__ == "__main__":
+    ports = [11013, 11014]  # 필요한 포트를 추가
+    tcp_server = TCPServer(ports=ports)
+    tcp_server.start_server()
