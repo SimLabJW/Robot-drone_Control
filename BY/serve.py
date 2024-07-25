@@ -58,8 +58,6 @@ class TCPServer:
                 except Exception as e:
                     print(f"Failed to send image: {e}")
                     self.image_conn = None
-            # else:
-            #     print("No client connected on port 11014 to send the image.")
 
     def handle_client(self, conn, addr, port):
         print(f"Client connected on port {port}: {addr}")
@@ -109,12 +107,10 @@ class TCPServer:
                     with threading.Lock():
                         self.image_conn = conn
 
-                     # A와 S 명령을 처리하는 스레드
                     command_thread = threading.Thread(target=self.handle_commands, args=(conn,))
                     command_thread.start()
 
                     while True:
-                        # Keep the connection alive
                         try:
                             if not self.remote_flag:
                                self.image_conn.sendall(b'ping')
@@ -140,13 +136,10 @@ class TCPServer:
             print(f"Client disconnected on port {port}: {addr}")
 
     def convert_image_to_bytes(self, image_data):
-        # 이미지를 JPEG 형식으로 메모리 버퍼에 인코딩
         success, encoded_image = cv2.imencode('.jpg', image_data)
         if success:
-            # 성공적으로 인코딩된 경우, 바이트 데이터를 반환
             return encoded_image.tobytes()
         else:
-            # 인코딩 실패 시, None 반환
             return None
         
     def handle_commands(self, conn):
