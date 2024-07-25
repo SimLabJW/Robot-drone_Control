@@ -89,8 +89,6 @@ class RobotController():
 
         return self.robot_name, timestamp, self.distance #hit_info
 
-
-
     def json_convert(id, timestamp, image_data, distance, hit_info=None):
         # 데이터를 서버로 전송
         hit_info = hit_info if hit_info else [None, None]
