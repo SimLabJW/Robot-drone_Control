@@ -4,6 +4,7 @@ import datetime
 import random
 import json
 
+from multi_robomaster import multi_robot
 from robomaster import robot, camera, conn
 
 class RobotController():
@@ -14,9 +15,9 @@ class RobotController():
 
         self.ep_robot = robot.Robot()
         self.ip_to_sn = {
-        "192.168.50.31": "3JKCK2S00305WL",
-        "192.168.50.221": "3JKCK6U0030A6U",
-        "192.168.50.39": "3JKCK980030EKR"
+        "192.168.50.31": "3JKCK2S00305WL",  # 집게 로봇
+        "192.168.50.221": "3JKCK6U0030A6U", # 5층 로봇
+        "192.168.50.39": "3JKCK980030EKR"   # 6층 로봇
         }
         
     def Research_Device(self):
@@ -107,3 +108,40 @@ class RobotController():
     def time():
         # 현재 시간을 문자열 형식으로 반환
         return datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+    
+    ###############################################################################################
+    # 로봇 1개
+    def control_one():
+        
+        return    
+    
+    
+    
+    # 다중 로봇 
+    def control_multi():
+    
+        # 집게, 5층, 6층
+        robots_sn_list = ['3JKCK2S00305WL', '3JKCK6U0030A6U', '3JKCK980030EKR']
+        
+        multi_robots = multi_robot.MultiEP()
+        multi_robots.initialize()
+        
+        number = multi_robots.number_id_by_sn([0, robots_sn_list[0]], [1, robots_sn_list[1]], [2, robots_sn_list[2]])
+        
+        print("The number of robot is: {0}".format(number))
+        robot_group_all = multi_robots.build_group([0, 1, 2])
+        
+        robot_group_ep_arm = multi_robots.build_group([0])       # 집게
+        robot_group_ep_gimbal = multi_robots.build_group([1, 2])    # 총
+        
+        
+        
+    
+        return
+    
+    
+    
+    
+    
+    
+    
