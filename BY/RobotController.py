@@ -45,7 +45,6 @@ class RobotController():
 
 
     def Device_Camera(self, ep_robot):
-        time.sleep(3)
         ep_camera = ep_robot.camera
         ep_camera.start_video_stream(display=False)
         return ep_camera
@@ -54,7 +53,6 @@ class RobotController():
         self.ep_robot = robot.Robot()
         self.ep_robot.initialize(conn_type="sta", sn=sn)
         self.ep_chassis = self.ep_robot.chassis
-        time.sleep(3)
 
         return self.ep_robot
 
