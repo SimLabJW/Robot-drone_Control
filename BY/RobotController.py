@@ -7,7 +7,9 @@ import time
 
 from multi_robomaster import multi_robot
 from robomaster import robot, camera, conn
+from multi_robomaster import multi_robot
 import sys
+
 
 class RobotController():
     def __init__(self): 
@@ -53,11 +55,13 @@ class RobotController():
         self.ep_robot = robot.Robot()
         self.ep_robot.initialize(conn_type="sta", sn=sn)
         self.ep_chassis = self.ep_robot.chassis
+        self.ep_gimbal = self.ep_robot.gimbal
 
         return self.ep_robot
 
+    
     def Device_Sensor(self, ep_robot):
-        ep_robot.sensor.sub_distance(freq=4, callback=self.tof_callback)
+        ep_robot.sensor.sub_distance(freq=1, callback=self.tof_callback)
         
     
     def get_latest_distance(self):
@@ -75,8 +79,6 @@ class RobotController():
         timestamp = self.time()
         
         # hit_info = [armor_id, hit_type]
-        
-  
         # self.ep_robot.led.set_led(comp="all", r=random.randint(0, 255), g=random.randint(0, 255), b=random.randint(0, 255))  
 
         return [{"timestamp":timestamp, "distance":self.distance}] #hit_info
@@ -98,36 +100,8 @@ class RobotController():
         return json_data.encode('utf-8')
 
     ###############################################################################################
-    # 로봇 1개
-    def control_one():
-        
-        return    
-    
-    
-    
-    # 다중 로봇 
-    def control_multi():
-    
-        # 집게, 5층, 6층
-        robots_sn_list = ['3JKCK2S00305WL', '3JKCK6U0030A6U', '3JKCK980030EKR']
-        
-        multi_robots = multi_robot.MultiEP()
-        multi_robots.initialize()
-        
-        number = multi_robots.number_id_by_sn([0, robots_sn_list[0]], [1, robots_sn_list[1]], [2, robots_sn_list[2]])
-        
-        print("The number of robot is: {0}".format(number))
-        robot_group_all = multi_robots.build_group([0, 1, 2])
-        
-        robot_group_ep_arm = multi_robots.build_group([0])       # 집게
-        robot_group_ep_gimbal = multi_robots.build_group([1, 2])    # 총
-        
-        return
-    
 
-    
-    def Move(self, key):
-        
+    def Move(self, ep_robot, key):
         try:
             # Define body movement based on key
             body_movement = {
@@ -135,11 +109,63 @@ class RobotController():
                 'S': (-0.3, 0, 0),
                 'A': (0, -0.3, 0),
                 'D': (0, 0.3, 0),
-                'Q': (0, 0, 45),
-                'E': (0, 0, -45)
+                'Q': (0, 0, 30),
+                'E': (0, 0, -30)
             }
             x, y, z = body_movement[key]
-            self.ep_chassis.move(x=x, y=y, z=z, xy_speed=0.7, z_speed=45).wait_for_completed()
+            ep_robot.chassis.move(x=x, y=y, z=z, xy_speed=0.7, z_speed=45).wait_for_completed()
         except KeyError:
             print(f"Invalid key: '{key}'. Terminating program.")
             sys.exit(1)  # 프로그램을 에러 코드와 함께 종료
+
+    def Rotation(self,key):
+
+        try:
+            # Define gimbal movement based on key
+            gimbal_movement = {
+                'Q': (30, 0),
+                'E': (-30, 0),
+            }
+
+            pitch, yaw = gimbal_movement[key]
+            self.ep_gimbal.move(pitch=pitch, yaw=yaw).wait_for_completed()
+        except KeyError:
+            print(f"Invalid key: '{key}'. Terminating program.")
+            sys.exit(1)  # 프로그램을 에러 코드와 함께 종료
+
+
+####################################################################################
+ #multi
+    def initialize_multi_robot(self, sn):
+        multi_robots = multi_robot.MultiEP()
+        multi_robots.initialize()
+
+        connected_robots_gimbal = []
+        connected_robots_gripper = []
+
+        if '3JKCK2S00305WL' in sn:
+            filtered_sn = [s for s in sn if s != '3JKCK2S00305WL']
+            for idx, sn in enumerate(['3JKCK2S00305WL'], start=len(filtered_sn)):
+                try:
+                    if multi_robots.number_id_by_sn([idx, sn]):
+                        connected_robots_gripper.append((idx, sn))
+                except:
+                    print(f"Robot with SN {sn} is not connected.")
+
+            gripper_ids = [idx for idx, sn in connected_robots_gripper]
+            robot_group_gripper = multi_robots.build_group(gripper_ids)
+
+            return multi_robots, robot_group_gripper
+
+        else:
+            for idx, sn in enumerate(sn):
+                try:
+                    if multi_robots.number_id_by_sn([idx, sn]):
+                        connected_robots_gimbal.append((idx, sn))
+                except:
+                    print(f"Robot with SN {sn} is not connected.")
+
+            gimbal_ids = [idx for idx, sn in connected_robots_gimbal]
+            robot_group_gimbal = multi_robots.build_group(gimbal_ids)
+
+            return multi_robots, robot_group_gimbal

@@ -3,7 +3,6 @@ import threading
 import time
 import signal
 import os
-from pynput import keyboard
 from RobotController import *
 
 class TCPServer:
@@ -22,17 +21,22 @@ class TCPServer:
 
         self.ep_robot = None  # 로봇을 나중에 초기화하기 위해 None으로 설정
         self.robotcamera = None
+        self.robotsensor = None
         self.robots = {}  # 변경된 부분: 여러 로봇을 관리하기 위한 딕셔너리
         self.initialized_robots = set()  # 이미 초기화된 로봇을 추적하기 위한 집합
         self.init_lock = threading.Lock()  # 초기화에 사용할 락
 
         for port in self.ports:
-            server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            server.bind((self.host, port))
-            server.listen(5)
-            self.servers.append(server)
-            print(f"Server is running on port {port}...")
+            try:
+                server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                server.bind((self.host, port))
+                server.listen(5)
+                self.servers.append(server)
+                print(f"Server is running on port {port}...")
+            except socket.error as e:
+                print(f"Error binding to port {port}: {e}")
+                os._exit(1)
 
     def send_periodically(self, conn, message, stop_event):
         while not stop_event.is_set():
@@ -43,7 +47,11 @@ class TCPServer:
                 self.connect_message = self.robotcontroller.Research_Device()
                 message = json.dumps(self.connect_message).encode()
 
-            conn.sendall(message)
+            try:
+                conn.sendall(message)
+            except socket.error as e:
+                print(f"Error sending message: {e}")
+                break
             time.sleep(1)  # 1초마다 메시지 전송
 
     def send_image(self, robotcamera):
@@ -58,30 +66,42 @@ class TCPServer:
                     except Exception as e:
                         print(f"Failed to send image: {e}")
                         self.image_conn = None
-                # else:
-                #     print("robotcamera is None, cannot send image.")
+
 
     def initialize_robot(self, serial_number):
-        with self.init_lock:
+        max_retries = 3
+        for attempt in range(max_retries):
             try:
-                if serial_number not in self.robots:
-                    ep_robot = self.robotcontroller.initialize_robot(serial_number)
-                    if ep_robot:
-                        robotcamera = self.robotcontroller.Device_Camera(ep_robot)
-                        self.robotcontroller.Device_Sensor(ep_robot)
-                        self.robots[serial_number] = {
-                            'robot': ep_robot,
-                            'camera': robotcamera
-                        }
-                        self.initialized_robots.add(serial_number)
-                    else:
-                        print(f"Failed to initialize robot with serial number: {serial_number}")
+                with self.init_lock:
+                    if serial_number not in self.robots:
+                        ep_robot = self.robotcontroller.initialize_robot(serial_number)
+                        if ep_robot:
+                            robotcamera = self.robotcontroller.Device_Camera(ep_robot)
+                            robotsensor = self.robotcontroller.Device_Sensor(ep_robot)
+                            self.robots[serial_number] = {
+                                'robot': ep_robot,
+                                'camera': robotcamera,
+                                'sensor': robotsensor
+                            }
+                            self.initialized_robots.add(serial_number)
+                            print(f"Successfully initialized robot with serial number: {serial_number}")
+                            break
+                        else:
+                            print(f"Failed to initialize robot with serial number: {serial_number}")
 
-                if serial_number in self.robots:
-                    self.ep_robot = self.robots[serial_number]['robot']
-                    self.robotcamera = self.robots[serial_number]['camera']
-            except Exception as e:  # 예외 처리를 일반 예외로 수정
-                print(f"Error during robot initialization: {e}")
+                    if serial_number in self.robots:
+                        self.ep_robot = self.robots[serial_number]['robot']
+                        self.robotcamera = self.robots[serial_number]['camera']
+                        self.robotsensor = self.robots[serial_number]['sensor']
+                        break
+            except socket.timeout:
+                print(f"Attempt {attempt + 1}/{max_retries} - Socket timeout during robot initialization for serial number: {serial_number}")
+                continue
+            except Exception as e:
+                print(f"Attempt {attempt + 1}/{max_retries} - Error during robot initialization for serial number: {serial_number}: {e}")
+                time.sleep(2)  # 재시도 전 대기 시간
+        else:
+            print(f"Failed to initialize robot after {max_retries} attempts for serial number: {serial_number}")
 
     def handle_client(self, conn, addr, port):
         print(f"Client connected on port {port}: {addr}")
@@ -93,9 +113,13 @@ class TCPServer:
                 data = conn.recv(1024)
                 if not data:
                     break
-                data = data.decode()
-                json_data = json.loads(data)
-                print(f"Received from data {json_data[0]}: {json_data[1]}")
+                try:
+                    data = data.decode()
+                    json_data = json.loads(data)
+                except json.JSONDecodeError as e:
+                    print(f"JSON decode error: {e}")
+                    continue
+
                 if port == 11013:
                     print(f"Received from {addr} on port {port}: {data}")
                     if json_data[0] == 'Unity Start' or json_data[0] == 'Simulation':
@@ -123,6 +147,9 @@ class TCPServer:
                             init_thread.join()  # 초기화가 완료될 때까지 기다림
                         else:
                             print(f"Robot with serial number {serial_number} already initialized.")
+                            self.ep_robot = self.robots[serial_number]['robot']
+                            self.robotcamera = self.robots[serial_number]['camera']
+                            self.robotsensor = self.robots[serial_number]['sensor']
 
                         if send_thread and send_thread.is_alive():
                             stop_event.set()
@@ -139,7 +166,7 @@ class TCPServer:
 
                 elif port == 11014:  # 유니티로부터 명령을 전달 받음
                     if json_data[0] == 'Remote':
-                        time.sleep(5)
+                        time.sleep(3)
                         print(f"Received from {addr} on port {port}: {data}")
                         with threading.Lock():
                             self.image_conn = conn
@@ -149,11 +176,7 @@ class TCPServer:
 
                         while True:
                             try:
-                                if not self.remote_flag:
-                                    self.image_conn.sendall(b'ping')
-                                    time.sleep(1)
-                                else:
-                                    self.send_image(self.robotcamera)
+                                self.send_image(self.robotcamera)
 
                             except Exception as e:
                                 print(f"Exception keeping 11014 alive: {e}")
@@ -164,6 +187,7 @@ class TCPServer:
                         pass
         except Exception as e:
             print(f"Exception in client handler on port {port}: {e}")
+            self.ep_robot.close()
         finally:
             if send_thread and send_thread.is_alive():
                 stop_event.set()
@@ -173,6 +197,7 @@ class TCPServer:
                     self.image_conn = None
             conn.close()
             print(f"Client disconnected on port {port}: {addr}")
+            self.ep_robot.close()
 
 
     def convert_image_to_bytes(self, image_data):
@@ -189,13 +214,29 @@ class TCPServer:
                 if not data:
                     break
                 data = data.decode()
-                if self.remote_flag and data in ['W', 'S', 'A', 'D']:
-                    self.robomaster_move(data)
+
+                try:
+                    json_data = json.loads(data)
+
+                except json.JSONDecodeError as e:
+                    print(f"JSON decode error in handle_commands: {e}")
+                    continue
+
+                if self.remote_flag and json_data[1] in ['W', 'S', 'A', 'D','Q', 'E']:
+                    self.robomaster_move(json_data[1])  # 올바른 데이터 전달
+
+                # if self.remote_flag and json_data[1] in ['Q', 'E']: #대가리 회전임
+                #     self.robomaster_rotation(json_data[1])  # 올바른 데이터 전달
+
         except Exception as e:
             print(f"Exception in command handler: {e}")
 
     def robomaster_move(self, cmd):
-        self.robotcontroller.Move(cmd)
+        self.robotcontroller.Move(self.ep_robot, cmd)
+        print(f"robomaster unity cmd : {cmd}")
+
+    def robomaster_head_rotation(self, cmd):
+        self.robotcontroller.Rotation(cmd)
         print(f"robomaster unity cmd : {cmd}")
 
     def start_server(self):
