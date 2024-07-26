@@ -20,9 +20,13 @@ class TCPServer:
         self.image_conn = None  # To hold the connection for image transfer
         self.image_conn_lock = threading.Lock()
 
-        self.ep_robot = self.robotcontroller.initialize_robot("3JKCK980030EKR")
-        self.robotcamera = self.robotcontroller.Device_Camera(self.ep_robot)
-        self.robotcontroller.Device_Sensor(self.ep_robot)
+        #self.ep_robot = self.robotcontroller.initialize_robot("3JKCK980030EKR")
+        #self.robotcamera = self.robotcontroller.Device_Camera(self.ep_robot)
+        #self.robotcontroller.Device_Sensor(self.ep_robot)
+        
+        self.ep_robot = None  # 로봇을 나중에 초기화하기 위해 None으로 설정
+        self.robotcamera = None
+        self.robots = {}  # 변경된 부분: 여러 로봇을 관리하기 위한 딕셔너리
 
         for port in self.ports:
             server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -59,6 +63,7 @@ class TCPServer:
                     print(f"Failed to send image: {e}")
                     self.image_conn = None
 
+
     def handle_client(self, conn, addr, port):
         print(f"Client connected on port {port}: {addr}")
         stop_event = threading.Event()
@@ -88,6 +93,28 @@ class TCPServer:
                         send_thread.start()
                     elif data == 'Remote':
                         self.remote_flag = True
+                        _, serial_number = data.split()  # 변경된 부분: 시리얼 넘버 추출
+                        
+                        # 변경된 부분: 로봇 초기화
+                        if serial_number not in self.robots:
+                            ep_robot = self.robotcontroller.initialize_robot(serial_number)
+                            if ep_robot:
+                                robotcamera = self.robotcontroller.Device_Camera(ep_robot)
+                                self.robotcontroller.Device_Sensor(ep_robot)
+                                self.robots[serial_number] = {
+                                    'robot': ep_robot,
+                                    'camera': robotcamera
+                                }
+                            else:
+                                print(f"Failed to initialize robot with serial number: {serial_number}")
+                                
+                        
+                        
+                        if serial_number in self.robots:
+                            self.ep_robot = self.robots[serial_number]['robot']
+                            self.robotcamera = self.robots[serial_number]['camera']
+
+                        
                         
                         if send_thread and send_thread.is_alive():
                             stop_event.set()
