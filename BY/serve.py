@@ -73,7 +73,7 @@ class TCPServer:
 
                 if port == 11013:
                     print(f"Received from {addr} on port {port}: {data}")
-                    if data == 'Simulation':
+                    if data == 'Unity Start' or data == 'Simulation':
                         self.remote_flag = False
                         if send_thread and send_thread.is_alive():
                             stop_event.set()
@@ -86,6 +86,7 @@ class TCPServer:
                             connect_m = json.dumps(connect_m).encode()
                         send_thread = threading.Thread(target=self.send_periodically, args=(conn, connect_m, stop_event))
                         send_thread.start()
+
                     elif data == 'Remote':
                         self.remote_flag = True
                         
