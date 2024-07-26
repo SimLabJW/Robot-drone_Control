@@ -109,7 +109,7 @@ class TCPServer:
                                 }
                             else:
                                 print(f"Failed to initialize robot with serial number: {serial_number}")
-                                print(f"Failed to initialize robot _ serial number: {ep_robot}")
+                                
                         
                         
                         if serial_number in self.robots:
