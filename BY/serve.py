@@ -9,7 +9,7 @@ from RobotController import *
 class TCPServer:
     def __init__(self, host='0.0.0.0', ports=[11013]):
         self.robotcontroller = RobotController()
-        self.message = None
+        self.connect_message = None
         self.sensor_message = None
 
         self.host = host
@@ -42,8 +42,8 @@ class TCPServer:
                 self.sensor_message = self.robotcontroller.get_latest_distance()
                 message = json.dumps(self.sensor_message).encode()
             else:
-                self.message = self.robotcontroller.Research_Device()
-                message = json.dumps(self.message).encode()
+                self.connect_message = self.robotcontroller.Research_Device()
+                message = json.dumps(self.connect_message).encode()
 
             conn.sendall(message)
             time.sleep(1)  # 1초마다 메시지 전송
@@ -62,8 +62,6 @@ class TCPServer:
                 except Exception as e:
                     print(f"Failed to send image: {e}")
                     self.image_conn = None
-            # else:
-            #     print("No client connected on port 11014 to send the image.")
 
 
     def handle_client(self, conn, addr, port):
@@ -86,12 +84,12 @@ class TCPServer:
                             stop_event.set()
                             send_thread.join()
                         stop_event.clear()
-                        self.message = self.robotcontroller.Research_Device()
-                        if not self.message or self.message == "No robots found.":
-                            self.message = b"No robots found."
+                        connect_m = self.robotcontroller.Research_Device()
+                        if not connect_m or connect_m == "No robots found.":
+                            connect_m = b"No robots found."
                         else:
-                            self.message = json.dumps(self.message).encode()
-                        send_thread = threading.Thread(target=self.send_periodically, args=(conn, self.message, stop_event))
+                            connect_m = json.dumps(connect_m).encode()
+                        send_thread = threading.Thread(target=self.send_periodically, args=(conn, connect_m, stop_event))
                         send_thread.start()
                     elif data == 'Remote':
                         self.remote_flag = True
@@ -122,26 +120,24 @@ class TCPServer:
                             stop_event.set()
                             send_thread.join()
                         stop_event.clear()
-                        self.sensor_message = self.robotcontroller.get_latest_distance()
+                        sensor_m = self.robotcontroller.get_latest_distance()
         
-                        if not self.sensor_message :
-                            self.sensor_message = b"No robots found."
+                        if not sensor_m :
+                            sensor_m = b"No robots found."
                         else:
-                            self.sensor_message = json.dumps(self.sensor_message).encode()
-                        send_thread = threading.Thread(target=self.send_periodically, args=(conn,self.sensor_message, stop_event))
+                            sensor_m = json.dumps(sensor_m).encode()
+                        send_thread = threading.Thread(target=self.send_periodically, args=(conn, sensor_m, stop_event))
                         send_thread.start()
 
-                elif port == 11014:
+                elif port == 11014:# 유니티로 부터 명령을 전달 받음
                     print(f"Received from {addr} on port {port}: {data}")
                     with threading.Lock():
                         self.image_conn = conn
 
-                     # A와 S 명령을 처리하는 스레드
                     command_thread = threading.Thread(target=self.handle_commands, args=(conn,))
                     command_thread.start()
 
                     while True:
-                        # Keep the connection alive
                         try:
                             if not self.remote_flag:
                                self.image_conn.sendall(b'ping')
@@ -167,13 +163,10 @@ class TCPServer:
             print(f"Client disconnected on port {port}: {addr}")
 
     def convert_image_to_bytes(self, image_data):
-        # 이미지를 JPEG 형식으로 메모리 버퍼에 인코딩
         success, encoded_image = cv2.imencode('.jpg', image_data)
         if success:
-            # 성공적으로 인코딩된 경우, 바이트 데이터를 반환
             return encoded_image.tobytes()
         else:
-            # 인코딩 실패 시, None 반환
             return None
         
     def handle_commands(self, conn):
